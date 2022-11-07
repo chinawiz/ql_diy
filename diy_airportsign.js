@@ -2,7 +2,7 @@
 [task_local]
 #机场签到
 0 7 * * * , tag=机场签到, enabled=true
-1 7 * * *  diy_airportsign.js,
+1 7 * * *  机场签到,
 机场签到
 多账号@隔开
 格式：token
