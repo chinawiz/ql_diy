@@ -214,7 +214,7 @@ async function run() {
         if (msg) {
             message += `【京东账号${$.index}】${$.nickName || $.UserName}\n${msg}\n`
         }
-        await $.wait(parseInt(Math.random() * 2000 + 2000, 10))
+        await $.wait(parseInt(Math.random() * 2000 + 30000, 10))
     } catch (e) {
         console.log(e)
     }
