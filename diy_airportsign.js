@@ -46,7 +46,7 @@ async function checkIn(cookie, index) {
     try {
         // 1. 执行签到
         const checkinRes = await axios.post(`https://${DOMAIN}/api/user/checkin`, {
-            token: "glados.one"
+            token: "glados.cloud"
         }, { headers });
         
         const checkinMsg = checkinRes.data.message;
