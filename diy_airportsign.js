@@ -2,129 +2,115 @@
 [task_local]
 #机场签到
 0 7 * * * , tag=机场签到, enabled=true
-1 7 * * *  机场签到,
-机场签到
-多账号@隔开
-格式：token
-==========
-青龙变量
-==========
-export airportCookie=''    //多账号@隔开
-举个例子：export airportCookie='token@token'
-==========
 */
+const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
 
+// 尝试加载 notify，避免崩溃
+let notify = { sendNotify: async () => {} };
+try {
+    // 优先查找当前目录，其次查找 function 目录 (常见的 QL 结构)
+    const possiblePaths = [
+        './sendNotify', 
+        './function/sendNotify', 
+        '../sendNotify'
+    ];
+    
+    for (const p of possiblePaths) {
+         try {
+             require.resolve(p); // 检查文件是否存在
+             notify = require(p);
+             break;
+         } catch(e) {}
+    }
+} catch (e) {
+    console.log('未找到 sendNotify.js，将不发送通知');
+}
 
-const request = require('request') ? require('request') :'';
-const notify = require('./sendNotify') ? require('./sendNotify') : '';
-const airportCookie = process.env.airportCookie ? process.env.airportCookie  : '';
+// 环境变量
+const airportCookie = process.env.airportCookie || '';
+const DOMAIN = 'glados.rocks';
 
-//var airportCookie = '';
-//var waitTime = 1000;//单位：ms
-//var tokenIds = '';
-var msg = "";//记录推送内容
-var index = 0;//记录账号顺序
+// 辅助函数：随机睡眠
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-//主函数
+async function checkIn(cookie, index) {
+    const headers = {
+        'cookie': cookie,
+        'referer': `https://${DOMAIN}/console/checkin`,
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        'content-type': 'application/json;charset=UTF-8'
+    };
+
+    try {
+        // 1. 执行签到
+        const checkinRes = await axios.post(`https://${DOMAIN}/api/user/checkin`, {
+            token: "glados.one"
+        }, { headers });
+        
+        const checkinMsg = checkinRes.data.message;
+        
+        // 2. 查询状态 (可选，获取剩余天数)
+        // 注意：部分账号可能获取状态失败，不应阻碍主流程
+        let statusMsg = "";
+        try {
+            const statusRes = await axios.get(`https://${DOMAIN}/api/user/status`, { headers });
+            if (statusRes.data && statusRes.data.data) {
+                const leftDays = parseInt(statusRes.data.data.leftDays);
+                const email = statusRes.data.data.email;
+                statusMsg = `[${email}] 剩余 ${leftDays} 天`;
+            }
+        } catch (statusError) {
+            console.log(`账号${index} 获取状态失败: ${statusError.message}`);
+        }
+
+        const log = `账号${index} ${statusMsg}: ${checkinMsg}`;
+        console.log(log);
+        return log;
+
+    } catch (e) {
+        const errMsg = `账号${index} 签到失败: ${e.message}`;
+        console.log(errMsg);
+        return errMsg;
+    }
+}
+
 async function main() {
-    if(request == ''){
-        console.log("请安装依赖：request");
+    if (!airportCookie) {
+        console.log("请设置环境变量 airportCookie (格式: cookie1@cookie2)");
         return;
     }
-    let ac = airportCookie.split('@');
-    console.log("开始运行");
-    console.log("共"+ac.length+"个账号");
-    //循环开始
-    for(var i=0;i < ac.length;i++ ){
-        if(ac[i] != '' && ac[i] != 'undefined'){//如果账号为空跳过
-            index = i+1;//记录当前第几个账号
-            // if(i != 0){
-            //     console.log("等待"+waitTime/1000+"秒");
-            //     await sleep(waitTime);//延迟运行
-            // }
-            await sign(ac[i]);//签到
-        }
+
+    // 检查 axios 是否安装，如果没有提示安装
+    try {
+        require.resolve('axios');
+    } catch (e) {
+        console.log("错误: 缺少依赖 'axios'");
+        console.log("请在终端运行: npm install axios");
+        // 为了兼容性，这里可以考虑 fallback，但既然是优化建议，直接提示安装更好
+        return;
     }
-    if(msg.length>0){
-        console.log(msg);//打印
-        await notify.sendNotify("机场签到",msg);//
-    }else{
-        console.log("啥推送信息都没干");
+
+    const cookies = airportCookie.split('@').filter(x => x && x !== 'undefined');
+    console.log(`共 ${cookies.length} 个账号\n`);
+
+    let allMsg = '';
+    
+    for (let i = 0; i < cookies.length; i++) {
+        if (i > 0) {
+            // 随机延时 2-5 秒
+            const wait = Math.floor(Math.random() * 3000) + 2000;
+            console.log(`等待 ${wait/1000}秒 ...`);
+            await sleep(wait);
+        }
+        const msg = await checkIn(cookies[i], i + 1);
+        allMsg += msg + '\n';
+    }
+
+    if (allMsg) {
+        await notify.sendNotify("机场签到汇总", allMsg);
     }
 }
-//签到
-// POST https://glados.rocks/api/user/checkin HTTP/1.1
-//     Host: glados.rocks
-// Connection: keep-alive
-// Content-Length: 26
-// sec-ch-ua: "Chromium";v="106", "Microsoft Edge";v="106", "Not;A=Brand";v="99"
-// DNT: 1
-// sec-ch-ua-mobile: ?0
-//     Authorization: 2955106794105734180656862944519-1080-1920
-// User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.52
-// Content-Type: application/json;charset=UTF-8
-// Accept: application/json, text/plain, */*
-// sec-ch-ua-platform: "Windows"
-// Origin: https://glados.rocks
-// Sec-Fetch-Site: same-origin
-// Sec-Fetch-Mode: cors
-// Sec-Fetch-Dest: empty
-// Accept-Encoding: gzip, deflate, br
-// Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6
-// Cookie:
-//
-// {"token":"glados.network"}
-async function sign(cookie){
-    return new Promise(resolve => {
-        try {
-            request({
-                    // 内置http请求函数
-                    "url": "https://glados.rocks/api/user/checkin",//请求链接
-                    "method": "post", //请求方法
-                    "headers": {
-                        "Content-Type": "application/json;charset=UTF-8",
-                        "Accept": "application/json, text/plain, */*",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36 Edg/106.0.1370.52",
-                        "Cookie": cookie,
 
-                    },
-                    "body": '{"token":"glados.one"}'
-                },
-                function (error, response, body) {
-                    console.log(body);
-                    //存在请求返回代码
-                    let data =JSON.parse(body);
-                    console.log("账号"+index+"("+data.code+")"+data.message+"\n")
-                    msg += "账号"+index+"("+data.code+")"+data.message+"\n";
-                    // switch (data.code){
-                    //     case 0:
-                    //
-                    //         break;
-                    //     case 1:
-                    //         break;
-                    //     default:
-                    //         msg += "账号"+index+"("+data.code+")"+data.message+"\n";
-                    //         break;
-                    // }
-                    // if(data.code === 1){
-                    //     msg += "账号"+index+"("+body.error_code+")"+body.msg+"\n";
-                    // }else{
-                    //     msg += "账号"+index+"签到失败\n";
-                    // }
-                    resolve();
-                })
-        } catch (error) {
-            console.log(error);
-            resolve();
-        }
-    });
-}
-
-
-//睡眠函数
-// function sleep(time) {
-//     return new Promise(resolve => setTimeout(resolve, time));
-//}
-
-
-main()//运行主函数
+main();
