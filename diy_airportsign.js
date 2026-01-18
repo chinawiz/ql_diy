@@ -65,7 +65,20 @@ async function checkIn(cookie, index) {
             console.log(`账号${index} 获取状态失败: ${statusError.message}`);
         }
 
-        const log = `账号${index} ${statusMsg}: ${checkinMsg}`;
+        // 3. 查询点数
+        let pointsMsg = "";
+        try {
+            const pointsRes = await axios.get(`https://${DOMAIN}/api/user/points`, { headers });
+            // JSON structure: {"code":0,"points":"184.0000","history":[...]}
+            if (pointsRes.data && pointsRes.data.points !== undefined) {
+                const points = parseInt(pointsRes.data.points);
+                pointsMsg = `，点数: ${points}`;
+            }
+        } catch (pointsError) {
+            console.log(`账号${index} 获取点数失败: ${pointsError.message}`);
+        }
+
+        const log = `账号${index} ${statusMsg}${pointsMsg}: ${checkinMsg}`;
         console.log(log);
         return log;
 
