@@ -10,7 +10,6 @@ const fs = require('fs');
 // 尝试加载 notify，避免崩溃
 let notify = { sendNotify: async () => {} };
 try {
-    // 优先查找当前目录，其次查找 function 目录 (常见的 QL 结构)
     const possiblePaths = [
         './sendNotify', 
         './function/sendNotify', 
@@ -19,7 +18,7 @@ try {
     
     for (const p of possiblePaths) {
          try {
-             require.resolve(p); // 检查文件是否存在
+             require.resolve(p);
              notify = require(p);
              break;
          } catch(e) {}
@@ -34,6 +33,26 @@ const DOMAIN = 'glados.rocks';
 
 // 辅助函数：随机睡眠
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * 带超时保护的通知发送，超时后静默放弃，不阻塞进程
+ * @param {string} title
+ * @param {string} content
+ * @param {number} timeoutMs 超时毫秒数，默认 10 秒
+ */
+async function sendNotifySafe(title, content, timeoutMs = 10000) {
+    const timeout = new Promise(resolve =>
+        setTimeout(() => {
+            console.log(`通知发送超时（>${timeoutMs / 1000}s），已跳过`);
+            resolve();
+        }, timeoutMs)
+    );
+    try {
+        await Promise.race([notify.sendNotify(title, content), timeout]);
+    } catch (e) {
+        console.log(`通知发送失败（已忽略）: ${e.message}`);
+    }
+}
 
 async function checkIn(cookie, index) {
     const headers = {
@@ -51,8 +70,7 @@ async function checkIn(cookie, index) {
         
         const checkinMsg = checkinRes.data.message;
         
-        // 2. 查询状态 (可选，获取剩余天数)
-        // 注意：部分账号可能获取状态失败，不应阻碍主流程
+        // 2. 查询状态
         let statusMsg = "";
         try {
             const statusRes = await axios.get(`https://${DOMAIN}/api/user/status`, { headers });
@@ -69,7 +87,6 @@ async function checkIn(cookie, index) {
         let pointsMsg = "";
         try {
             const pointsRes = await axios.get(`https://${DOMAIN}/api/user/points`, { headers });
-            // JSON structure: {"code":0,"points":"184.0000","history":[...]}
             if (pointsRes.data && pointsRes.data.points !== undefined) {
                 const points = parseInt(pointsRes.data.points);
                 pointsMsg = `，点数: ${points}`;
@@ -95,13 +112,11 @@ async function main() {
         return;
     }
 
-    // 检查 axios 是否安装，如果没有提示安装
     try {
         require.resolve('axios');
     } catch (e) {
         console.log("错误: 缺少依赖 'axios'");
         console.log("请在终端运行: npm install axios");
-        // 为了兼容性，这里可以考虑 fallback，但既然是优化建议，直接提示安装更好
         return;
     }
 
@@ -112,7 +127,6 @@ async function main() {
     
     for (let i = 0; i < cookies.length; i++) {
         if (i > 0) {
-            // 随机延时 2-5 秒
             const wait = Math.floor(Math.random() * 3000) + 2000;
             console.log(`等待 ${wait/1000}秒 ...`);
             await sleep(wait);
@@ -122,7 +136,7 @@ async function main() {
     }
 
     if (allMsg) {
-        await notify.sendNotify("机场签到汇总", allMsg);
+        await sendNotifySafe("机场签到汇总", allMsg,30000);
     }
 }
 
