@@ -29,6 +29,9 @@ try {
 
 // 环境变量
 const airportCookie = process.env.airportCookie || '';
+// 服务端会校验签到请求的 UA 平台与登录设备一致（不一致返回 device-mismatch 并拒绝签到），
+// 多账号可用 @ 分隔多个 UA，与 airportCookie 中的账号一一对应
+const airportUA = process.env.airportUA || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36';
 const DOMAIN = 'glados.rocks';
 
 // 辅助函数：随机睡眠
@@ -54,11 +57,11 @@ async function sendNotifySafe(title, content, timeoutMs = 10000) {
     }
 }
 
-async function checkIn(cookie, index) {
+async function checkIn(cookie, index, ua) {
     const headers = {
         'cookie': cookie,
         'referer': `https://${DOMAIN}/console/checkin`,
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        'user-agent': ua,
         'content-type': 'application/json;charset=UTF-8'
     };
 
@@ -109,6 +112,7 @@ async function checkIn(cookie, index) {
 async function main() {
     if (!airportCookie) {
         console.log("请设置环境变量 airportCookie (格式: cookie1@cookie2)");
+        console.log("可选 airportUA 指定签到 UA，须与账号登录设备的平台一致，多账号用 @ 分隔");
         return;
     }
 
@@ -121,6 +125,7 @@ async function main() {
     }
 
     const cookies = airportCookie.split('@').filter(x => x && x !== 'undefined');
+    const uas = airportUA.split('@').filter(x => x && x !== 'undefined');
     console.log(`共 ${cookies.length} 个账号\n`);
 
     let allMsg = '';
@@ -131,7 +136,7 @@ async function main() {
             console.log(`等待 ${wait/1000}秒 ...`);
             await sleep(wait);
         }
-        const msg = await checkIn(cookies[i], i + 1);
+        const msg = await checkIn(cookies[i], i + 1, uas[i] || uas[0]);
         allMsg += msg + '\n';
     }
 
